@@ -78,10 +78,11 @@ typedef struct {
     int num_pawns_finished;
 } Player;
 
+Player players[NUM_PLAYERS];
 
 
-void setup()
-{
+void setup() {
+  // put your setup code here, to run once:
   delay( 1000 ); // power-up safety delay
 
   Serial.begin(9600);
@@ -111,18 +112,151 @@ void setup()
   //FastLED.setBrightness(  BRIGHTNESS );
 
   randomSeed(analogRead(0));
+
+  init_players();
+
+  turn_on_display();
+
+  turn_on_players_homes();
+
+  turn_on_players_space();
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  //turn_on_players_space();
+  play();
 }
 
 
-void loop()
-{
-  play();  
+void play() {
+  delay(100);
+
+  int current_player = 0;
+  int dice_roll = 0;
+
+  // Test only
+  /*players[0].pawns[0].position = 3;
+  players[1].pawns[0].position = 9;
+  players[2].pawns[0].position = 15;
+  players[3].pawns[0].position = 21;
+
+  players[0].pawns[0].status = (Status)IN_PLAY;
+  players[1].pawns[0].status = (Status)IN_PLAY;
+  players[2].pawns[0].status = (Status)IN_PLAY;
+  players[3].pawns[0].status = (Status)IN_PLAY;
+
+  players[0].pawns[1].position = 5;
+  players[1].pawns[1].position = 12;
+  players[2].pawns[1].position = 18;
+  players[3].pawns[1].position = 24;
+
+  players[0].pawns[1].status = (Status)IN_PLAY;
+  players[1].pawns[1].status = (Status)IN_PLAY;
+  players[2].pawns[1].status = (Status)IN_PLAY;
+  players[3].pawns[1].status = (Status)IN_PLAY;
+
+  players[0].num_pawns_home = 2;
+  players[1].num_pawns_home = 2;
+  players[2].num_pawns_home = 2;
+  players[3].num_pawns_home = 2;*/
+
+  
+
+  while(!is_game_over())
+  {
+
+    draw_dice_with_arrow(current_player, -1);
+
+    while(keypad.getKey() != get_key_player(current_player)) {
+      //for(int i = 0; i < 3; i++) { 
+      blink_players_space(current_player);
+    }
+
+    dice_roll = roll_dice();
+
+    draw_dice_with_arrow(current_player, dice_roll);
+
+    // get num of pawns in play
+    int num_pawns_in_play = 0;
+    for (int i = 0; i < NUM_PAWNS; i++) {
+      if (players[current_player].pawns[i].status == IN_PLAY) {
+        num_pawns_in_play++;
+      }
+    }
+
+    Serial.println(num_pawns_in_play);
+
+    // check for 6 or continue
+    if (num_pawns_in_play == 0 && dice_roll != 6)
+    {
+      delay(300);
+
+      for(int i = 0; i < 3; i++)
+        blink_players_space(current_player);
+       
+      current_player = (current_player + 1) % NUM_PLAYERS;
+      continue;
+    }
+
+    int pawn_choice = -1;
+    int curr_pawn_index = -1;
+
+    unsigned long lastPressTime = millis();
+    const unsigned long debounceDelay = 3000;
+
+    if(num_pawns_in_play > 1 || dice_roll == 6 || players[current_player].num_pawns_finished != 0)
+    {
+    
+      do {
+        int next_pawn_index = get_next_pawn(curr_pawn_index, current_player, dice_roll);
+        
+        if(next_pawn_index == -1)
+          break;
+        
+        blink_pawn(next_pawn_index, current_player);
+  
+        while(keypad.getKey() != get_key_player(current_player))
+        {
+          if((millis() - lastPressTime) > debounceDelay)
+          {
+            pawn_choice = next_pawn_index;
+            break;
+          }
+          blink_pawn(next_pawn_index, current_player);
+        }
+
+        lastPressTime = millis();
+  
+        curr_pawn_index = next_pawn_index;
+        
+      } while (pawn_choice == -1);        //pawn_choice <= 0 || pawn_choice >= NUM_PAWNS || players[current_player].pawns[pawn_choice].status != IN_PLAY);
+
+    }
+    else {
+      pawn_choice = 0;
+      delay(700);
+    }
+
+    move_pawn(current_player, pawn_choice, dice_roll);
+
+    if(dice_roll != 6)
+      current_player = (current_player + 1) % 4;
+    
+  }
+  //end
 }
 
 
-void play()
-{
-  Player players[NUM_PLAYERS];
+
+
+
+int roll_dice() {
+    return random(1, 7);
+}
+
+void init_players() {
   for (int i = 0; i < NUM_PLAYERS; i++) {
       players[i].num_pawns_home = NUM_PAWNS;
       players[i].num_pawns_finished = 0;
@@ -132,7 +266,9 @@ void play()
           players[i].pawns[j].position = -1;
       }
   }
+}
 
+void turn_on_display() {
   display.clearDisplay();
   display.setTextSize(4);      // Normal 1:1 pixel scale
   display.setTextColor(SSD1306_WHITE); // Draw white text
@@ -149,259 +285,9 @@ void play()
   
   
   delay(1000);
-
-  set_up_home();
-  delay(1000);
-
-  //blink_full();
-  
-  int current_player = 0;
-  while (!is_game_over(players))
-  {
-    // ADD DELAYS WHEN BLINKING AND ANYTHING ELSE!!!
-    
-    // print arrow on the display, with the current player
-
-    draw_dice_with_arrow(current_player, -1);
-    
-    // blink once the home of the current player and its pawns
-
-    delay(100);
-    
-    // wait for click of the button
-    // and while waiting blink something
-    while(keypad.getKey() != get_key_player(current_player)) {
-      //Serial.println(get_key_player(current_player));
-      blink_players_space(players[current_player], (Color)current_player);
-    }
-
-    // roll the dice
-    // print it on the display!
-    
-    //printf("Player %d's turn:\n", current_player + 1);
-    
-    int dice_roll = roll_dice();
-    
-    //printf("Rolled a %d!\n", dice_roll);
-
-    draw_dice_with_arrow(current_player, dice_roll);
-
-    // get num of pawns in play
-    int num_pawns_in_play = 0;
-    for (int i = 0; i < NUM_PAWNS; i++) {
-      if (players[current_player].pawns[i].status == IN_PLAY) {
-        num_pawns_in_play++;
-      }
-    }
-
-    // check for 6 or continue
-    if (num_pawns_in_play == 0 && dice_roll != 6)
-    {
-      //printf("No pawns in play. Waiting for 6 to start.\n");
-      
-      delay(700);
-      
-      // blink something
-      for(int i = 0; i < 3; i++)
-        blink_players_space(players[current_player], (Color)current_player);
-      // print on the display next player
-      
-      current_player = (current_player + 1) % NUM_PLAYERS;
-      continue;
-    }
-    
-    int pawn_choice = -1;
-    int curr_pawn_index = -1;
-
-    unsigned long lastPressTime = 0;
-    const unsigned long debounceDelay = 3000;
-    
-    if(num_pawns_in_play != 0)
-    {
-    
-      do {
-        // make function to check which pawns can be move
-        // get the next pawn in list
-        int next_pawn_index = get_next_pawn(curr_pawn_index, players[current_player], dice_roll);
-        Pawn next_pawn = players[current_player].pawns[next_pawn_index];
-        
-        // blink
-        blink_pawn(next_pawn);
-  
-        // then make with button to change smth
-        // finally choose pawn to move
-
-        while(keypad.getKey() != get_key_player(current_player))
-        {
-          if((millis() - lastPressTime) > debounceDelay)
-          {
-            pawn_choice = next_pawn_index;
-            break;
-          }
-          blink_pawn(next_pawn);
-        }
-
-        lastPressTime = millis();
-  
-        curr_pawn_index = next_pawn_index;
-        
-      } while (pawn_choice == -1);//pawn_choice <= 0 || pawn_choice >= NUM_PAWNS || players[current_player].pawns[pawn_choice].status != IN_PLAY);
-
-    }
-    else
-      pawn_choice = 3;
-
-    // move pawn and blink
-    // move pawn in system
-    // then move pawn on the light board with blinking!
-    // check for butane!!!
-    // sega napravi premestvaneto da sveti :) !
-    
-    move_pawn(players, 4, &players[current_player], &players[current_player].pawns[pawn_choice], dice_roll);
-
-    Serial.print("After move: ");
-    Serial.println(players[current_player].pawns[pawn_choice].position);
-    Serial.print("Status: ");
-    Serial.println(players[current_player].pawns[pawn_choice].status);
-       
-    //printf("Pawn moved to position %d.\n", players[current_player].pawns[pawn_choice].position);
-
-    // change current player to the next player
-    if(dice_roll != 6)
-      current_player = (current_player + 1) % NUM_PLAYERS;
-  }
-  
-  // blink with the winner!!!
-  // end the game
-  //printf("Player %d wins!\n", current_player + 1);
-  
-  while(1) {
-    //blink with the winner, while the game is not turned off :)
-    blink_winner(players[current_player]);
-  }
 }
 
-
-
-int roll_dice() {
-    return random(1, 7);
-}
-
-
-char get_key_player(int current_player) {
-  if(current_player == 0)
-    return 'R';
-  else if(current_player == 1)
-    return 'G';
-  else if(current_player == 2)
-    return 'B';
-  else
-    return 'Y';
-}
-
-void move_pawn(Player *players, int num_players, Player *current_player, Pawn *pawn, int spaces) {
-    Serial.print("Status: ");
-    Serial.println(pawn->status);
-    if(pawn->status == (Status)START)
-    {
-      current_player->num_pawns_home--;
-      Serial.println("First pawn");
-      pawn->status = (Status)IN_PLAY;
-      pawn->position = 0;
-      blink_moving(pawn, current_player->num_pawns_home, 6, current_player->num_pawns_home, NULL);
-      return;
-    }
-  
-    int current_position = pawn->position;
-    Serial.print("Curr pos: ");
-    Serial.println(current_position);
-    int new_position = current_position + spaces;
-    Serial.print("New pos: ");
-    Serial.println(new_position);
-    Serial.print("Spaces: ");
-    Serial.println(spaces);
-    int num_pawns_on_new_position = 0;
-    Player *other_player = NULL;
-    Pawn *other_pawn = NULL;
-
-    // Check if the pawn lands on a space with other pawns
-    for (int i = 0; i < num_players; i++) {
-        if (&players[i] != current_player) {  // skip current player
-            for (int j = 0; j < NUM_PAWNS; j++) {
-                Pawn *p = &players[i].pawns[j];
-                if (p->status == (Status)IN_PLAY && p->position == new_position) {
-                    num_pawns_on_new_position++;
-                    other_player = &players[i];
-                    other_pawn = p;
-                }
-            }
-        }
-    }
-
-    int special_case = 0;
-
-    // If there is a collision, move the other pawn back to its home
-    if (num_pawns_on_new_position == 1) {
-        //printf("Collision with player %d's pawn!\n", other_player - players);
-        other_pawn->status = START;
-        other_pawn->position = -1;
-        other_player->num_pawns_home++;
-        special_case = 1;
-    }
-
-    int prev_pos = pawn->position;
-
-    // Move the current pawn
-    if (new_position >= BOARD_SIZE) { // opravi!!!
-        pawn->status = FINISH;
-        current_player->num_pawns_finished++;
-        special_case = 2;
-    } else {
-        pawn->position = new_position;
-    }
-
-    blink_moving(pawn, prev_pos, spaces, special_case, other_player);
-}
-
-int is_game_over(Player players[NUM_PLAYERS]) {
-    for (int i = 0; i < NUM_PLAYERS; i++) {
-        if (players[i].num_pawns_finished == NUM_PAWNS) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-
-int get_position_on_the_board(int position, Color color)
-{
-  if(color == (Color)RED)
-    return (position + 14) % BOARD_SIZE;
-  else if(color == (Color)GREEN)
-    return (position + 27) % BOARD_SIZE;
-  else if(color == (Color)BLUE)
-    return (position + 40) % BOARD_SIZE;
-  else
-    return (position + 1) % BOARD_SIZE;
-}
-
-int get_next_pawn(int prev_pawn, Player player, int dice_num) {
-  for(int i = (prev_pawn == 3 ? 0 : prev_pawn + 1); i < 4; i++)
-  {
-    Pawn curr = player.pawns[i];
-    if(curr.status == (Status)START && dice_num == 6)
-      return i;
-    else if (curr.status == (Status)FINISH)
-      continue;
-    else if(curr.position + dice_num >= BOARD_SIZE)
-      return -1;
-    return i; 
-  }
-}
-
-
-
-void set_up_home() {
+void turn_on_players_homes() {
   CRGB color_led = CRGB::Red;
   //Color color_home = (Color)0;
   for(int i = 0; i < 32; i++) {
@@ -415,10 +301,11 @@ void set_up_home() {
       color_led = Yellow1;//yellow
     delay(200);
   }
+  delay(1000);
 }
 
-void blink_full() {
-    CRGB color_led = CRGB::Red;
+void turn_on_players_space() {
+  CRGB color_led = CRGB::Red;
     for(int i = 0; i < 52; i++)
     {
       leds[0][i] = color_led;
@@ -431,7 +318,7 @@ void blink_full() {
         color_led = Yellow1;
       delay(200);
     }
-    delay(5000);
+    delay(3000);
 
     for(int i = 0; i < 52; i++)
     {
@@ -441,224 +328,14 @@ void blink_full() {
     delay(1000);
 }
 
-void blink_players_space(Player player, Color color) {
-  for(int i = 0; i < (4 - (player.num_pawns_home + player.num_pawns_finished)); i++) {
-    if(player.pawns[i].status != (Status)START || player.pawns[i].status != (Status)FINISH)
-      leds[0][get_position_on_the_board(player.pawns[i].position, color)] = CRGB::Black;
-  }
-  if(player.num_pawns_home > 0)
-  {
-    for(int j = 0; j < player.num_pawns_home; j++)
-    {
-      leds[1][((int)color * 8) + (j * 2)] = CRGB::Black;
-      leds[1][((int)color * 8) + (j * 2) + 1] = CRGB::Black;
+int is_game_over() {
+  for (int i = 0; i < NUM_PLAYERS; i++) {
+        if (players[i].num_pawns_finished == NUM_PAWNS) {
+            return 1;
+        }
     }
-  }
-  FastLED.show();
-  delay(100);
-  
-  CRGB crgb_color;
-  if(color == (Color)RED)
-    crgb_color = CRGB::Red;
-  else if(color == (Color)GREEN)
-    crgb_color = CRGB::Green;
-  else if(color == (Color)BLUE)
-    crgb_color = CRGB::Blue;
-  else
-    crgb_color = Yellow1;
-
-  for(int i = 0; i < (4 - (player.num_pawns_home + player.num_pawns_finished)); i++) {
-    if(player.pawns[i].status != (Status)START || player.pawns[i].status != (Status)FINISH)
-      leds[0][get_position_on_the_board(player.pawns[i].position, color)] = crgb_color;
-  }
-  if(player.num_pawns_home > 0)
-  {
-    for(int j = 0; j < player.num_pawns_home; j++)
-    {
-      leds[1][((int)color * 8) + (j * 2)] = crgb_color;
-      leds[1][((int)color * 8) + (j * 2) + 1] = crgb_color;
-    }
-  }
-  FastLED.show();
-  delay(100);
-}
-
-void blink_pawn(Pawn pawn)
-{
-  int pos = get_position_on_the_board(pawn.position, pawn.color);
-  
-  CRGB crgb_color;
-  if(pawn.color == (Color)RED)
-    crgb_color = CRGB::Red;
-  else if(pawn.color == (Color)GREEN)
-    crgb_color = CRGB::Green;
-  else if(pawn.color == (Color)BLUE)
-    crgb_color = CRGB::Blue;
-  else
-    crgb_color = Yellow1;
-    
-  leds[0][pos] = CRGB::Black;
-  FastLED.show();
-
-  delay(90);
-
-  leds[0][pos] = crgb_color;
-  FastLED.show();
-
-  delay(90);
-}
-
-void blink_moving(Pawn* pawn, int prev_pos, int spaces, int special_case, Player* other_player)
-{
-  CRGB main_color;
-  if(pawn->color == (Color)RED)
-    main_color = CRGB::Red;
-  else if(pawn->color == (Color)GREEN)
-    main_color = CRGB::Green;
-  else if(pawn->color == (Color)BLUE)
-    main_color = CRGB::Blue;
-  else
-    main_color = Yellow1;
-  
-  int old_pos = get_position_on_the_board(prev_pos, pawn->color), new_pos = get_position_on_the_board(pawn->position, pawn->color);
-  if(special_case == 0)
-  {
-    if(new_pos < old_pos)
-    {
-      Serial.println("nenenen");
-      for(int i = old_pos; i < BOARD_SIZE; i++)
-        blink_next_led(i, main_color);
-      for(int i = 0; i < new_pos; i++)
-        blink_next_led(i, main_color);
-    }
-    else
-    {
-      Serial.println("dada");
-      for(int i = old_pos; i < new_pos; i++) // opravi!!!
-        blink_next_led(i, main_color);
-    }
-    //leds[0][get_position_on_the_board(int position, Color color)] = crgb_color;
-  }
-  else if(special_case == 1) // push another pawn
-  {
-    if(new_pos < old_pos)
-    {
-      for(int i = old_pos; i < BOARD_SIZE; i++)
-        blink_next_led(i, main_color);
-      for(int i = 0; i < (new_pos - 1); i++)
-        blink_next_led(i, main_color);
-    }
-    else
-    {
-      for(int i = old_pos; i < (new_pos - 1); i++) // opravi!!!
-        blink_next_led(i, main_color);
-    }
-
-    CRGB second_color;
-    if(other_player->pawns[0].color == (Color)RED)
-      second_color = CRGB::Red;
-    else if(other_player->pawns[0].color == (Color)GREEN)
-      second_color = CRGB::Green;
-    else if(other_player->pawns[0].color == (Color)BLUE)
-      second_color = CRGB::Blue;
-    else
-      second_color = Yellow1;
-
-    leds[1][((int)other_player->pawns[0].color * 8) + (other_player->num_pawns_home * 2)] = second_color;
-    FastLED.show();
-    delay(100);
-    
-    leds[1][((int)other_player->pawns[0].color * 8) + (other_player->num_pawns_home * 2) + 1] = second_color;
-    FastLED.show();
-    delay(100);
-    
-    leds[0][new_pos] = main_color;
-    FastLED.show();
-    delay(100);
-  }
-  else if(special_case == 2) // curr pawn goes to finish
-  {
-    leds[0][old_pos] = CRGB::Black;
-    FastLED.show();
-    (delay(50));
-  }
-  else if(special_case == 3) // curr pawn get from start to start pos
-  {
-    delay(700);
-    
-    leds[1][((int)pawn->color * 8) + (prev_pos * 2)] = CRGB::Black;
-    //Serial.println(((int)pawn->color * 8) + (prev_pos * 2));
-    leds[1][((int)pawn->color * 8) + (prev_pos * 2) + 1] = CRGB::Black;
-    
-    FastLED.show();
-    delay(500);
-
-    leds[0][get_start_pos(pawn->color)] = main_color;
-
-    FastLED.show();
-    delay(200);
-  }
-}
-
-int get_start_pos(Color color)
-{
-  if(color == (Color)RED)
-    return 13;
-  else if(color == (Color)GREEN)
-    return 26;
-  else if(color == (Color)BLUE)
-    return 39;
-  else
     return 0;
 }
-
-void blink_next_led(int prev_position, CRGB color)
-{
-  CRGB color_black = CRGB::Black;
-  if(leds[0][prev_position] == color_black || leds[0][prev_position] == color)
-  {
-    leds[0][prev_position] = CRGB::Black;
-    FastLED.show();
-    delay(100);
-    
-    if(prev_position + 1 < BOARD_SIZE)
-    {
-      leds[0][prev_position + 1] = color;
-      FastLED.show();
-      delay(100);
-    }
-  }
-}
-
-void blink_winner(Player player)
-{
-  Color color = player.pawns[0].color;
-  for(int j = 0; j < 8; j++)
-    leds[1][((int)color * 8) + j] = CRGB::Black;
-
-  FastLED.show();
-  delay(200);
-
-  CRGB crgb_color;
-  switch(color) {
-    case((Color)RED):
-      crgb_color = CRGB::Red;
-    case((Color)GREEN):
-      crgb_color = CRGB::Green;
-    case((Color)BLUE):
-      crgb_color = CRGB::Blue;
-    case((Color)YELLOW):
-      crgb_color = Yellow1;
-  }
-
-  for(int j = 0; j < (player.num_pawns_home * 2); j++)
-    leds[1][((int)color * 8) + j] = crgb_color;
-
-  FastLED.show();
-  delay(200);
-}
-
-
 
 void draw_dice_with_arrow(int current_player_number, int dice_number)
 {
@@ -742,4 +419,340 @@ void draw_dice_with_arrow(int current_player_number, int dice_number)
   
   display.display();
   delay(100);
+}
+
+void blink_players_space(int player) {
+  
+  CRGB crgb_color;
+  if((Color)player == (Color)RED)
+    crgb_color = CRGB::Red;
+  else if((Color)player == (Color)GREEN)
+    crgb_color = CRGB::Green;
+  else if((Color)player == (Color)BLUE)
+    crgb_color = CRGB::Blue;
+  else
+    crgb_color = Yellow1;
+
+  for(int i = 0; i < 4; i++)
+  {
+    int curr_pos = players[player].pawns[i].position;
+    if(curr_pos == -1 && players[player].pawns[i].status == (Status)START)
+    {
+      // blink pawn from home
+      leds[1][(player * 8) + (i * 2)] = CRGB::Black;
+      leds[1][(player * 8) + (i * 2) + 1] = CRGB::Black;
+    }
+    else
+      leds[0][curr_pos] = CRGB::Black;
+  }
+
+  FastLED.show();
+  delay(80);
+
+  for(int i = 0; i < 4; i++)
+  {
+    int curr_pos = players[player].pawns[i].position;
+    if(curr_pos == -1 && players[player].pawns[i].status == (Status)START)
+    {
+      // blink pawn from home
+      leds[1][(player * 8) + (i * 2)] = crgb_color;
+      leds[1][(player * 8) + (i * 2) + 1] = crgb_color;
+    }
+    else
+      leds[0][curr_pos] = crgb_color;
+  }
+
+  FastLED.show();
+  delay(80);
+}
+
+char get_key_player(int current_player) {
+  if(current_player == 0)
+    return 'R';
+  else if(current_player == 1)
+    return 'G';
+  else if(current_player == 2)
+    return 'B';
+  else
+    return 'Y';
+}
+
+int get_next_pawn(int prev_pawn_index, int player_index, int dice_num) {
+  int curr = prev_pawn_index;
+  
+  do
+  {
+    curr = (curr + 1) % 4;
+
+    Status pawn_status = players[player_index].pawns[curr].status;
+
+    if(pawn_status == (Status)IN_PLAY)
+      return curr;
+
+    if(pawn_status == (Status)START && dice_num == 6)
+      return curr;
+    
+    if(pawn_status == (Status)FINISH)
+      continue;
+    
+  } while(curr != prev_pawn_index);
+  return -1;
+}
+
+void blink_pawn(int pawn_index, int player_index)
+{
+  int pos = players[player_index].pawns[pawn_index].position;
+  
+  CRGB crgb_color;
+  if((Color)player_index == (Color)RED)
+    crgb_color = CRGB::Red;
+  else if((Color)player_index == (Color)GREEN)
+    crgb_color = CRGB::Green;
+  else if((Color)player_index == (Color)BLUE)
+    crgb_color = CRGB::Blue;
+  else
+    crgb_color = Yellow1;
+
+  if(pos != -1)
+    leds[0][pos] = CRGB::Black;
+  else {
+    leds[1][(player_index * 8) + (pawn_index * 2)] = CRGB::Black;
+    leds[1][(player_index * 8) + (pawn_index * 2) + 1] = CRGB::Black;
+  }
+  
+  FastLED.show();
+  delay(80);
+
+  if(pos != -1)
+    leds[0][pos] = crgb_color;
+  else {
+    leds[1][(player_index * 8) + (pawn_index * 2)] = crgb_color;
+    leds[1][(player_index * 8) + (pawn_index * 2) + 1] = crgb_color;
+  }
+  
+  FastLED.show();
+  delay(80);
+}
+
+int get_start_index(int current_player) {
+  if(current_player == 0) // red
+    return 13;
+  else if(current_player == 1) // green
+    return 26;
+  else if(current_player == 2) // blue
+    return 39;
+  else // yellow
+    return 0;
+}
+
+int get_final_index(int current_player) {
+  if(current_player == 0) // red
+    return 12;
+  else if(current_player == 1) // green
+    return 25;
+  else if(current_player == 2) // blue
+    return 38;
+  else // yellow
+    return 51;
+}
+
+void move_pawn(int current_player, int pawn_index, int spaces) {
+  Pawn pawn = players[current_player].pawns[pawn_index];
+
+  if(pawn.status == (Status)START)
+  {
+    players[current_player].num_pawns_home--;
+    players[current_player].pawns[pawn_index].status = (Status)IN_PLAY;
+    players[current_player].pawns[pawn_index].position = get_start_index(current_player);
+    Serial.println("Blink_from_home");
+    blink_moving_from_home(current_player, pawn_index);
+    return;
+  }
+
+  int current_pos = pawn.position, new_pos = current_pos + spaces;
+  int other_player = 0, other_pawn = 0, num_pawns_on_new_pos = 0;
+
+  if(current_pos <= get_final_index(current_player) && new_pos > get_final_index(current_player)) { //final
+    players[current_player].num_pawns_finished++;
+    players[current_player].pawns[pawn_index].status = (Status)FINISH;
+    blink_moving_to_final(current_pos);
+    players[current_player].pawns[pawn_index].position = -1;
+    return;
+  }
+
+  for (int i = 0; i < 4; i++) {
+        if (i != current_player) {  // skip current player
+            for (int j = 0; j < NUM_PAWNS; j++) {
+                Pawn p = players[i].pawns[j];
+                if (p.status == (Status)IN_PLAY && p.position == new_pos) {
+                    num_pawns_on_new_pos++;
+                    other_player = i;
+                    other_pawn = j;
+                }
+            }
+        }
+    }
+
+  if(num_pawns_on_new_pos > 0)
+  {
+    bool flag = 0;
+    CRGB color_there;
+    if(new_pos != 0)
+    {
+      if(leds[0][(new_pos - 1) % 52]) {
+        color_there = leds[0][(new_pos - 1) % 52];
+        flag = 1;
+      }
+    }
+    else
+    {
+      if(leds[0][51]) {
+        color_there = leds[0][(new_pos - 1) % 52];
+        flag = 1;
+      }
+    }
+
+    
+    blink_moving(current_player, current_pos, spaces - 1);
+    
+    blink_push(current_player, new_pos, pawn_index, other_player, other_pawn);
+    if(flag) {
+      if(new_pos == 0)
+        leds[0][51] = color_there;
+      else
+        leds[0][(new_pos - 1) % 52] = color_there;
+      FastLED.show();
+      delay(50);
+    }
+    
+    players[other_player].pawns[other_pawn].position = -1;
+    players[other_player].pawns[other_pawn].status = (Status)START;
+    players[other_player].num_pawns_home++;
+    players[current_player].pawns[pawn_index].position = new_pos % BOARD_SIZE;
+    return;
+  }
+
+  players[current_player].pawns[pawn_index].position = new_pos % BOARD_SIZE;
+  blink_moving(current_player, current_pos, spaces);
+  
+}
+
+void blink_moving_from_home(int player_index, int pawn_index) {
+  CRGB crgb_color;
+  if((Color)player_index == (Color)RED)
+    crgb_color = CRGB::Red;
+  else if((Color)player_index == (Color)GREEN)
+    crgb_color = CRGB::Green;
+  else if((Color)player_index == (Color)BLUE)
+    crgb_color = CRGB::Blue;
+  else
+    crgb_color = Yellow1;
+  
+  leds[1][(player_index * 8) + (pawn_index * 2)] = CRGB::Black;
+  leds[1][(player_index * 8) + (pawn_index * 2) + 1] = CRGB::Black;
+
+  FastLED.show();
+  delay(100);
+
+  leds[0][players[player_index].pawns[pawn_index].position] = crgb_color;
+  FastLED.show();
+  delay(100);
+}
+
+void blink_moving_to_final(int position) {
+  leds[0][position] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+}
+
+void blink_moving(int player_index, int prev_pos, int spaces) {
+  CRGB crgb_color;
+  if((Color)player_index == (Color)RED)
+    crgb_color = CRGB::Red;
+  else if((Color)player_index == (Color)GREEN)
+    crgb_color = CRGB::Green;
+  else if((Color)player_index == (Color)BLUE)
+    crgb_color = CRGB::Blue;
+  else
+    crgb_color = Yellow1;
+
+  CRGB on_prev_pos = CRGB::Black;
+  bool flag_prev = 0;
+  for(int curr = prev_pos, i = 0; i <= spaces; i++, curr = (curr + 1) % BOARD_SIZE)
+  {
+    if(flag_prev == 1) {
+      if(curr == 0 && curr != (prev_pos + 1))
+        leds[0][51] = on_prev_pos;
+      else
+        leds[0][curr - 1] = on_prev_pos;
+      flag_prev = 0;
+    }
+    else {
+      if(curr != prev_pos)
+      {
+        if(curr == 0)
+          leds[0][51] = CRGB::Black;
+        else
+          leds[0][curr - 1] = CRGB::Black;
+      }
+    }
+    
+    FastLED.show();
+    delay(90);
+
+    if(leds[0][(curr) % BOARD_SIZE] && curr != prev_pos) {
+      on_prev_pos = leds[0][(curr) % BOARD_SIZE];
+      flag_prev = 1;
+    }
+    leds[0][(curr) % BOARD_SIZE] = crgb_color;
+
+    FastLED.show();
+    delay(100);
+  }
+}
+
+void blink_push(int player_index, int new_pos, int pawn_index, int other_player, int other_pawn) {
+  CRGB crgb_color;
+  if((Color)player_index == (Color)RED)
+    crgb_color = CRGB::Red;
+  else if((Color)player_index == (Color)GREEN)
+    crgb_color = CRGB::Green;
+  else if((Color)player_index == (Color)BLUE)
+    crgb_color = CRGB::Blue;
+  else
+    crgb_color = Yellow1;
+
+  CRGB second_crgb_color;
+  if((Color)other_player == (Color)RED)
+    second_crgb_color = CRGB::Red;
+  else if((Color)other_player == (Color)GREEN)
+    second_crgb_color = CRGB::Green;
+  else if((Color)other_player == (Color)BLUE)
+    second_crgb_color = CRGB::Blue;
+  else
+    second_crgb_color = Yellow1;
+
+  leds[0][new_pos] = CRGB::Black;
+
+  FastLED.show();
+  delay(70);
+
+  leds[1][(other_player * 8) + (other_pawn * 2)] = second_crgb_color;
+  leds[1][(other_player * 8) + (other_pawn * 2) + 1] = second_crgb_color;
+  
+  FastLED.show();
+  delay(70);
+
+  if(new_pos != 0)
+    leds[0][new_pos - 1] = CRGB::Black;
+  else
+    leds[0][51] = CRGB::Black;
+
+  FastLED.show();
+  delay(70);
+
+  leds[0][new_pos] = crgb_color;
+
+  FastLED.show();
+  delay(70);
 }
